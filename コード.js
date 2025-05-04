@@ -1,5 +1,22 @@
 /**
+ * 夜の予定自動ブロックスクリプト
+ * バージョン: 1.0.0
+ * 最終更新: 2024-03-21
+ * 
+ * 機能:
+ * - 指定したキーワードを含む予定がある日の夜の時間帯を自動でブロック
+ * - 前日分のブロック予定を自動削除
+ * - 手動でのブロック設定と削除
+ */
+
+/**
  * スプレッドシートを開いたときにメニューを追加
+ * メニュー項目:
+ * - 設定シート作成
+ * - 予定自動ブロック実行
+ * - 3時間ごと自動ブロックON/OFF
+ * - 朝5時ロック削除ON/OFF
+ * - 前日の予定を手動削除
  */
 function onOpen() {
   SpreadsheetApp.getUi()
@@ -19,6 +36,12 @@ function onOpen() {
 
 /**
  * 設定シートを自動生成する
+ * 設定項目:
+ * - カレンダーID: 対象のGoogleカレンダーID
+ * - キーワード: ブロック対象となる予定のキーワード（カンマ区切り）
+ * - ブロック開始: ブロック開始時間（HH:MM形式）
+ * - ブロック終了: ブロック終了時間（HH:MM形式）
+ * - 検索日数（未来）: 未来何日分の予定を検索するか
  */
 function initializeSettings() {
   const ss = SpreadsheetApp.getActive();
@@ -45,12 +68,23 @@ function initializeSettings() {
   SpreadsheetApp.getUi().alert('設定シートを作成しました。カレンダーID等を入力してください。');
 }
 
+/**
+ * 時間文字列のデフォルト値処理
+ * @param {string} val - 入力値
+ * @param {string} def - デフォルト値
+ * @return {string} 処理後の時間文字列
+ */
 function getTimeOrDefault(val, def) {
   return (typeof val === 'string' && val.trim()) ? val.trim() : def;
 }
 
 /**
  * 予定自動ブロック本体
+ * 処理の流れ:
+ * 1. 設定の取得
+ * 2. カレンダーから予定を取得
+ * 3. キーワードに一致する予定がある日を特定
+ * 4. 該当日の夜の時間帯をブロック
  */
 function autoBlockEvening() {
   const ui = SpreadsheetApp.getUi();
@@ -112,6 +146,10 @@ function autoBlockEvening() {
 
 /**
  * 前日分の「予定あり」「予定を確保」イベントを削除
+ * 処理の流れ:
+ * 1. 設定の取得
+ * 2. 前日分のイベントを取得
+ * 3. 「予定あり」「予定を確保」のイベントを削除
  */
 function deletePreviousDayBlocks() {
   try {
@@ -145,6 +183,7 @@ function deletePreviousDayBlocks() {
 
 /**
  * 3時間ごと自動ブロックトリガーON
+ * 既存のトリガーを削除してから新規作成
  */
 function setBlockTrigger() {
   deleteBlockTrigger();
@@ -154,6 +193,7 @@ function setBlockTrigger() {
 
 /**
  * 3時間ごと自動ブロックトリガーOFF
+ * 該当するトリガーをすべて削除
  */
 function deleteBlockTrigger() {
   const triggers = ScriptApp.getProjectTriggers();
@@ -165,6 +205,7 @@ function deleteBlockTrigger() {
 
 /**
  * 朝5時ロック削除トリガーON
+ * 既存のトリガーを削除してから新規作成
  */
 function setDeleteTrigger() {
   deleteDeleteTrigger();
@@ -174,6 +215,7 @@ function setDeleteTrigger() {
 
 /**
  * 朝5時ロック削除トリガーOFF
+ * 該当するトリガーをすべて削除
  */
 function deleteDeleteTrigger() {
   const triggers = ScriptApp.getProjectTriggers();
@@ -185,6 +227,11 @@ function deleteDeleteTrigger() {
 
 /**
  * 前日分の「予定あり」「予定を確保」イベントを手動で削除
+ * 処理の流れ:
+ * 1. 設定の取得
+ * 2. 前日分のイベントを取得
+ * 3. 「予定あり」「予定を確保」のイベントを削除
+ * 4. 結果をダイアログで表示
  */
 function manualDeletePreviousDayBlocks() {
   try {
