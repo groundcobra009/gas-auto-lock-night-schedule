@@ -1,7 +1,8 @@
 /**
  * 夜の予定自動ブロックスクリプト
  * バージョン: 1.0.0
- * 最終更新: 2024-03-21
+ * 最終更新: 20250516
+ * 
  * 
  * 機能:
  * - 指定したキーワードを含む予定がある日の夜の時間帯を自動でブロック
@@ -17,6 +18,7 @@
  * - 3時間ごと自動ブロックON/OFF
  * - 朝5時ロック削除ON/OFF
  * - 前日の予定を手動削除
+ * - トリガー初期設定
  */
 function onOpen() {
   SpreadsheetApp.getUi()
@@ -31,6 +33,8 @@ function onOpen() {
     .addItem('朝5時ロック削除OFF', 'deleteDeleteTrigger')
     .addSeparator()
     .addItem('前日の予定を手動削除', 'manualDeletePreviousDayBlocks')
+    .addSeparator()
+    .addItem('トリガー初期設定', 'initializeTriggers')
     .addToUi();
 }
 
@@ -260,5 +264,30 @@ function manualDeletePreviousDayBlocks() {
     SpreadsheetApp.getUi().alert('前日分の予定あり/予定を確保イベントを' + delCount + '件削除しました');
   } catch(e) {
     SpreadsheetApp.getUi().alert('エラー: ' + e.message);
+  }
+}
+
+/**
+ * トリガーの初期設定
+ * 1. 既存のトリガーをすべて削除
+ * 2. 3時間ごとの自動ブロックトリガーを設定
+ * 3. 朝5時のロック削除トリガーを設定
+ */
+function initializeTriggers() {
+  const ui = SpreadsheetApp.getUi();
+  try {
+    // 既存のトリガーをすべて削除
+    const triggers = ScriptApp.getProjectTriggers();
+    triggers.forEach(function(t) {
+      ScriptApp.deleteTrigger(t);
+    });
+    
+    // 新しいトリガーを設定
+    ScriptApp.newTrigger('autoBlockEvening').timeBased().everyHours(3).create();
+    ScriptApp.newTrigger('deletePreviousDayBlocks').timeBased().atHour(5).everyDays(1).create();
+    
+    ui.alert('トリガー初期設定完了', '以下のトリガーを設定しました：\n・3時間ごとの自動ブロック\n・朝5時のロック削除', ui.ButtonSet.OK);
+  } catch(e) {
+    ui.alert('エラー', 'トリガー初期設定中にエラーが発生しました：\n' + e.message, ui.ButtonSet.OK);
   }
 }
