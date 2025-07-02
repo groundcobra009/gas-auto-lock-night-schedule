@@ -1,11 +1,12 @@
 /**
  * 夜の予定自動ブロックスクリプト
- * バージョン: 1.0.0
- * 最終更新: 20250516
- * 
+ * バージョン: 1.1.0
+ * 最終更新: 20250703
+ * https://docs.google.com/spreadsheets/d/1XlpKdYyes_iUmdODLDeRnTBE4MnNo3eiscw24zdNdEg/edit?gid=475079626#gid=475079626
  * 
  * 機能:
  * - 指定したキーワードを含む予定がある日の夜の時間帯を自動でブロック
+ * - 20時半以降に予定がある日の夜の時間帯を自動でブロック
  * - 前日分のブロック予定を自動削除
  * - 手動でのブロック設定と削除
  */
@@ -69,6 +70,12 @@ function initializeSettings() {
   sheet.setColumnWidth(1, 180);
   sheet.setColumnWidth(2, 300);
   sheet.getRange('A1:B1').setFontWeight('bold').setBackground('#f3f3f3');
+  
+  // 説明を追加
+  sheet.getRange('A7').setValue('説明');
+  sheet.getRange('B7').setValue('キーワードに該当する予定または20:30以降に予定がある日の夜をブロック');
+  sheet.getRange('A7:B7').setFontWeight('bold').setBackground('#e6f3ff');
+  
   SpreadsheetApp.getUi().alert('設定シートを作成しました。カレンダーID等を入力してください。');
 }
 
@@ -88,10 +95,10 @@ function getTimeOrDefault(val, def) {
  * 1. 設定の取得
  * 2. カレンダーから予定を取得
  * 3. キーワードに一致する予定がある日を特定
- * 4. 該当日の夜の時間帯をブロック
+ * 4. 20時半以降に予定がある日を特定
+ * 5. 該当日の夜の時間帯をブロック
  */
 function autoBlockEvening() {
-  const ui = SpreadsheetApp.getUi();
   try {
     // 設定取得
     const ss = SpreadsheetApp.getActive();
@@ -121,8 +128,19 @@ function autoBlockEvening() {
     const blockDates = {};
     events.forEach(function(ev) {
       const title = ev.getTitle();
+      const startTime = ev.getStartTime();
+      const eventDate = new Date(startTime.getFullYear(), startTime.getMonth(), startTime.getDate());
+      const ymd = eventDate.getFullYear() + '-' + (eventDate.getMonth()+1) + '-' + eventDate.getDate();
+      
+      // キーワードに一致する予定をチェック
       if (keywords.some(function(k){return title.indexOf(k) !== -1;})) {
-        const ymd = ev.getStartTime().getFullYear() + '-' + (ev.getStartTime().getMonth()+1) + '-' + ev.getStartTime().getDate();
+        blockDates[ymd] = true;
+      }
+      
+      // 20時半以降の予定をチェック
+      const eventHour = startTime.getHours();
+      const eventMinute = startTime.getMinutes();
+      if (eventHour > 20 || (eventHour === 20 && eventMinute >= 30)) {
         blockDates[ymd] = true;
       }
     });
@@ -142,9 +160,20 @@ function autoBlockEvening() {
         addCount++;
       }
     });
-    ui.alert('完了', addCount + '件の夜予定を自動ブロックしました。', ui.ButtonSet.OK);
+
+    // トリガーから実行された場合はログに記録、手動実行の場合はダイアログを表示
+    if (ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === 'autoBlockEvening')) {
+      Logger.log(addCount + '件の夜予定を自動ブロックしました。');
+    } else {
+      SpreadsheetApp.getUi().alert('完了', addCount + '件の夜予定を自動ブロックしました。', SpreadsheetApp.getUi().ButtonSet.OK);
+    }
   } catch(e) {
-    ui.alert('エラー', e.message, ui.ButtonSet.OK);
+    // トリガーから実行された場合はログに記録、手動実行の場合はダイアログを表示
+    if (ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === 'autoBlockEvening')) {
+      Logger.log('エラー: ' + e.message);
+    } else {
+      SpreadsheetApp.getUi().alert('エラー', e.message, SpreadsheetApp.getUi().ButtonSet.OK);
+    }
   }
 }
 
