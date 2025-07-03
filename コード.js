@@ -47,6 +47,8 @@ function onOpen() {
  * - ブロック開始: ブロック開始時間（HH:MM形式）
  * - ブロック終了: ブロック終了時間（HH:MM形式）
  * - 検索日数（未来）: 未来何日分の予定を検索するか
+ * - 夜予定ブロック開始: 20:30以降の予定がある場合のブロック開始時間
+ * - 夜予定ブロック終了: 20:30以降の予定がある場合のブロック終了時間
  */
 function initializeSettings() {
   const ss = SpreadsheetApp.getActive();
@@ -64,7 +66,9 @@ function initializeSettings() {
     ['キーワード', '飲,懇親,宴,パーティ,会食,交流,親睦,打ち上げ'],
     ['ブロック開始', '18:30'],
     ['ブロック終了', '21:00'],
-    ['検索日数（未来）', '30']
+    ['検索日数（未来）', '30'],
+    ['夜予定ブロック開始', '18:30'],
+    ['夜予定ブロック終了', '20:00']
   ];
   sheet.getRange(2, 1, settings.length, 2).setValues(settings);
   sheet.setColumnWidth(1, 180);
@@ -72,9 +76,9 @@ function initializeSettings() {
   sheet.getRange('A1:B1').setFontWeight('bold').setBackground('#f3f3f3');
   
   // 説明を追加
-  sheet.getRange('A7').setValue('説明');
-  sheet.getRange('B7').setValue('キーワードに該当する予定または20:30以降に予定がある日の夜をブロック');
-  sheet.getRange('A7:B7').setFontWeight('bold').setBackground('#e6f3ff');
+  sheet.getRange('A9').setValue('説明');
+  sheet.getRange('B9').setValue('キーワードに該当する予定または20:30以降に予定がある日の夜をブロック');
+  sheet.getRange('A9:B9').setFontWeight('bold').setBackground('#e6f3ff');
   
   SpreadsheetApp.getUi().alert('設定シートを作成しました。カレンダーID等を入力してください。');
 }
@@ -104,7 +108,7 @@ function autoBlockEvening() {
     const ss = SpreadsheetApp.getActive();
     const sheet = ss.getSheetByName('設定');
     if (!sheet) throw new Error('設定シートがありません。メニューから作成してください。');
-    const values = sheet.getRange(2, 1, 5, 2).getValues();
+    const values = sheet.getRange(2, 1, 7, 2).getValues();
     const config = {};
     values.forEach(function(row) { config[row[0]] = row[1]; });
     const calendarId = config['カレンダーID'];
@@ -112,6 +116,8 @@ function autoBlockEvening() {
     const keywords = config['キーワード'].split(',').map(function(s){return s.trim();}).filter(String);
     const blockStart = getTimeOrDefault(config['ブロック開始'], '18:30');
     const blockEnd = getTimeOrDefault(config['ブロック終了'], '21:00');
+    const nightBlockStart = getTimeOrDefault(config['夜予定ブロック開始'], '18:30');
+    const nightBlockEnd = getTimeOrDefault(config['夜予定ブロック終了'], '20:00');
     const days = parseInt(config['検索日数（未来）'] || '30', 10);
 
     // カレンダー取得
@@ -125,7 +131,8 @@ function autoBlockEvening() {
     const events = cal.getEvents(today, until);
 
     // 日付ごとに該当イベントがあるか判定
-    const blockDates = {};
+    const keywordBlockDates = {};  // キーワードベースのブロック
+    const nightBlockDates = {};    // 20:30以降の予定ベースのブロック
     events.forEach(function(ev) {
       const title = ev.getTitle();
       const startTime = ev.getStartTime();
@@ -134,20 +141,22 @@ function autoBlockEvening() {
       
       // キーワードに一致する予定をチェック
       if (keywords.some(function(k){return title.indexOf(k) !== -1;})) {
-        blockDates[ymd] = true;
+        keywordBlockDates[ymd] = true;
       }
       
       // 20時半以降の予定をチェック
       const eventHour = startTime.getHours();
       const eventMinute = startTime.getMinutes();
       if (eventHour > 20 || (eventHour === 20 && eventMinute >= 30)) {
-        blockDates[ymd] = true;
+        nightBlockDates[ymd] = true;
       }
     });
     
     // ブロック実行
     let addCount = 0;
-    Object.keys(blockDates).forEach(function(ymd) {
+    
+    // キーワードベースのブロック
+    Object.keys(keywordBlockDates).forEach(function(ymd) {
       const d = new Date(ymd);
       const s = blockStart.split(':');
       const e = blockEnd.split(':');
@@ -158,6 +167,23 @@ function autoBlockEvening() {
       if (!exists) {
         cal.createEvent('予定あり', start, end);
         addCount++;
+      }
+    });
+    
+    // 夜予定ベースのブロック（キーワードブロックと重複しない日のみ）
+    Object.keys(nightBlockDates).forEach(function(ymd) {
+      if (!keywordBlockDates[ymd]) {  // キーワードベースのブロックと重複しない場合のみ
+        const d = new Date(ymd);
+        const s = nightBlockStart.split(':');
+        const e = nightBlockEnd.split(':');
+        const start = new Date(d); start.setHours(parseInt(s[0],10), parseInt(s[1],10), 0, 0);
+        const end = new Date(d); end.setHours(parseInt(e[0],10), parseInt(e[1],10), 0, 0);
+        // 既存の同名イベントがなければ追加
+        const exists = cal.getEvents(start, end).some(function(ev){return ev.getTitle()==='予定あり'});
+        if (!exists) {
+          cal.createEvent('予定あり', start, end);
+          addCount++;
+        }
       }
     });
 
@@ -189,7 +215,7 @@ function deletePreviousDayBlocks() {
     const ss = SpreadsheetApp.getActive();
     const sheet = ss.getSheetByName('設定');
     if (!sheet) throw new Error('設定シートがありません。');
-    const values = sheet.getRange(2, 1, 5, 2).getValues();
+    const values = sheet.getRange(2, 1, 7, 2).getValues();
     const config = {};
     values.forEach(function(row) { config[row[0]] = row[1]; });
     const calendarId = config['カレンダーID'];
@@ -271,7 +297,7 @@ function manualDeletePreviousDayBlocks() {
     const ss = SpreadsheetApp.getActive();
     const sheet = ss.getSheetByName('設定');
     if (!sheet) throw new Error('設定シートがありません。');
-    const values = sheet.getRange(2, 1, 5, 2).getValues();
+    const values = sheet.getRange(2, 1, 7, 2).getValues();
     const config = {};
     values.forEach(function(row) { config[row[0]] = row[1]; });
     const calendarId = config['カレンダーID'];
